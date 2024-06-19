@@ -1,12 +1,29 @@
-# Test
-To convert the provided code to a Spring Boot application, we'll create a structured project that utilizes Spring Boot's capabilities for managing the database connection, reading files, and handling user input. Here's how the code can be adapted:
+To convert the given code to a pure Spring Boot application without using Spring Data JPA, we will create a structured project with the following components:
 
-### Project Structure
 1. **`src/main/java/com/example/dbqueryexecutor/DatabaseQueryExecutorApplication.java`**: The main class to run the Spring Boot application.
 2. **`src/main/java/com/example/dbqueryexecutor/controller/QueryController.java`**: REST controller to handle HTTP requests.
 3. **`src/main/java/com/example/dbqueryexecutor/service/DatabaseQueryService.java`**: Service to encapsulate the database query and Excel writing logic.
 4. **`src/main/java/com/example/dbqueryexecutor/model/QueryRequest.java`**: Model to handle the request payload.
 5. **`src/main/resources/application.properties`**: Configuration file for database connection and other properties.
+
+### Project Structure
+```text
+src
+└── main
+    ├── java
+    │   └── com
+    │       └── example
+    │           └── dbqueryexecutor
+    │               ├── DatabaseQueryExecutorApplication.java
+    │               ├── controller
+    │               │   └── QueryController.java
+    │               ├── model
+    │               │   └── QueryRequest.java
+    │               └── service
+    │                   └── DatabaseQueryService.java
+    └── resources
+        └── application.properties
+```
 
 ### 1. `DatabaseQueryExecutorApplication.java`
 ```java
@@ -206,16 +223,46 @@ public class QueryRequest {
 spring.datasource.url=jdbc:sybase:Tds:hostname:port/dbname
 spring.datasource.username=yourUsername
 spring.datasource.password=yourPassword
-
-spring.jpa.show-sql=true
-spring.jpa.hibernate.ddl-auto=none
 ```
 
-### Running the Application
-1. Create a new Spring Boot project using your preferred method (e.g., Spring Initializr).
-2. Add dependencies for Spring Web, Spring Data JPA, and the Apache POI library to your `pom.xml`.
-3. Update the `application.properties` file with your database connection details.
-4. Create the files as shown above in the appropriate package structure.
-5. Start the Spring Boot application and use a tool like Postman to send a POST request to `http://localhost:8080/api/query/execute` with the necessary files and JSON payload.
+### Setting Up the Project
 
-This Spring Boot application will now read the database credentials from the `application.properties` file, handle HTTP requests to execute SQL queries, extract key-value pairs, and write the results to an Excel file.
+1. **Create a Spring Boot Project**: Use Spring Initializr (https://start.spring.io/) to generate a new Spring Boot project. Include the dependencies for Spring Web and Apache POI.
+
+2. **Add Dependencies**: Ensure the following dependencies are added to your `pom.xml`:
+```xml
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.apache.poi</groupId>
+        <artifactId>poi-ooxml</artifactId>
+        <version>5.2.3</version>
+    </dependency>
+    <!-- Add your JDBC driver dependency for Sybase here -->
+    <dependency>
+        <groupId>com.sybase</groupId>
+        <artifactId>jconn4</artifactId>
+        <version>7.0</version>
+    </dependency>
+</dependencies>
+```
+
+3. **Configure Database Connection**: Update the `application.properties` file with your database connection details.
+
+### Running the Application
+
+1. **Start the Spring Boot Application**: Run `DatabaseQueryExecutorApplication.java` to start the Spring Boot application.
+
+2. **Send a POST Request**: Use a tool like Postman to send a POST request to `http://localhost:8080/api/query/execute` with a multipart file for the SQL query and a JSON body for the extraction columns.
+
+   Example of JSON body:
+   ```json
+   {
+       "extractionColumns": ["column1", "column2"]
+   }
+   ```
+
+This setup creates a Spring Boot application that reads database credentials from the `application.properties` file, handles HTTP requests to execute SQL queries, extracts key-value pairs, and writes the results to an Excel file.
