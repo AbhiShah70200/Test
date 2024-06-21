@@ -961,3 +961,341 @@ public class DatabaseQueryService {
    - Check the response section to see the server's response.
 
 This modification ensures the fields are extracted and ordered correctly in the output file.
+Certainly! Here is the entire refactored Spring Boot application in one go:
+
+### 1. `Application.java`
+
+This is the main class to bootstrap the Spring Boot application.
+
+```java
+package com.example.dbqueryexecutor;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class Application {
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+```
+
+### 2. `YourEntity.java`
+
+This class represents the table in the database.
+
+```java
+package com.example.dbqueryexecutor.model;
+
+import javax.persistence.*;
+
+@Entity
+@Table(name = "your_table")
+public class YourEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "column1")
+    private String column1;
+
+    @Column(name = "column2")
+    private String column2;
+
+    // Add other columns as needed
+
+    // Getters and setters
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getColumn1() {
+        return column1;
+    }
+
+    public void setColumn1(String column1) {
+        this.column1 = column1;
+    }
+
+    public String getColumn2() {
+        return column2;
+    }
+
+    public void setColumn2(String column2) {
+        this.column2 = column2;
+    }
+
+    // Add other getters and setters as needed
+}
+```
+
+### 3. `YourEntityRepository.java`
+
+This interface handles the database operations.
+
+```java
+package com.example.dbqueryexecutor.repository;
+
+import com.example.dbqueryexecutor.model.YourEntity;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public interface YourEntityRepository extends JpaRepository<YourEntity, Long> {
+    // Define custom query methods if needed
+}
+```
+
+### 4. `DatabaseQueryService.java`
+
+This service executes the query and writes the results to an Excel file.
+
+```java
+package com.example.dbqueryexecutor.service;
+
+import com.example.dbqueryexecutor.model.YourEntity;
+import com.example.dbqueryexecutor.repository.YourEntityRepository;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import javax.persistence.EntityManager;
+import javax.persistence.Query;
+import javax.transaction.Transactional;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.*;
+
+@Service
+public class DatabaseQueryService {
+
+    @Autowired
+    private YourEntityRepository yourEntityRepository;
+
+    @Autowired
+    private EntityManager entityManager;
+
+    @Transactional
+    public void executeQueryAndWriteToExcel(String queryString, String outputFilePath, List<String> extractionColumns, String separatorRegex) {
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("Query Results");
+
+            // Execute the query dynamically using EntityManager
+            Query query = entityManager.createNativeQuery(queryString, YourEntity.class);
+            List<YourEntity> resultList = query.getResultList();
+
+            // Get column names dynamically
+            Map<String, Integer> headerIndexes = new LinkedHashMap<>();
+            Row headerRow = sheet.createRow(0);
+            int headerIndex = 0;
+
+            for (String column : extractionColumns) {
+                headerRow.createCell(headerIndex).setCellValue(column);
+                headerIndexes.put(column, headerIndex++);
+            }
+
+            // Extracted keys in order
+            Map<String, LinkedHashSet<String>> columnKeysMap = new LinkedHashMap<>();
+            for (String column : extractionColumns) {
+                columnKeysMap.put(column, new LinkedHashSet<>());
+            }
+
+            for (YourEntity entity : resultList) {
+                extractKeys(entity, extractionColumns, columnKeysMap, separatorRegex);
+            }
+
+            // Write extracted key-value headers
+            for (String column : extractionColumns) {
+                for (String key : columnKeysMap.get(column)) {
+                    headerIndexes.put(column + ":" + key, headerIndex);
+                    headerRow.createCell(headerIndex++).setCellValue(key);
+                }
+            }
+
+            // Fill in data
+            int rowIndex = 1;
+            for (YourEntity entity : resultList) {
+                Row row = sheet.createRow(rowIndex++);
+                int cellIndex = 0;
+
+                for (String column : extractionColumns) {
+                    String value = getEntityFieldValue(entity, column);
+                    row.createCell(cellIndex++).setCellValue(value);
+
+                    Map<String, String> keyValuePairs = parseKeyValuePairs(value, separatorRegex);
+                    for (Map.Entry<String, String> entry : keyValuePairs.entrySet()) {
+                        int index = headerIndexes.get(column + ":" + entry.getKey());
+                        row.createCell(index).setCellValue(entry.getValue());
+                    }
+                }
+            }
+
+            try (FileOutputStream fileOut = new FileOutputStream(outputFilePath)) {
+                workbook.write(fileOut);
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void extractKeys(YourEntity entity, List<String> extractionColumns, Map<String, LinkedHashSet<String>> columnKeysMap, String separatorRegex) {
+        for (String column : extractionColumns) {
+            String value = getEntityFieldValue(entity, column);
+            if (value != null && !value.isEmpty()) {
+                String[] pairs = value.split(separatorRegex);
+                for (int i = 0; i < pairs.length - 1; i += 2) {
+                    columnKeysMap.get(column).add(pairs[i].trim());
+                }
+            }
+        }
+    }
+
+    private Map<String, String> parseKeyValuePairs(String text, String separatorRegex) {
+        Map<String, String> map = new LinkedHashMap<>();
+        if (text != null && !text.isEmpty()) {
+            String[] pairs = text.split(separatorRegex);
+            for (int i = 0; i < pairs.length - 1; i += 2) {
+                map.put(pairs[i].trim(), pairs[i + 1].trim());
+            }
+        }
+        return map;
+    }
+
+    private String getEntityFieldValue(YourEntity entity, String fieldName) {
+        try {
+            return (String) YourEntity.class.getDeclaredField(fieldName).get(entity);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+}
+```
+
+### 5. `DatabaseQueryController.java`
+
+This controller handles the incoming HTTP requests.
+
+```java
+package com.example.dbqueryexecutor.controller;
+
+import com.example.dbqueryexecutor.service.DatabaseQueryService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+@RestController
+@RequestMapping("/api/query")
+public class DatabaseQueryController {
+
+    @Autowired
+    private DatabaseQueryService databaseQueryService;
+
+    @PostMapping("/execute")
+    public String executeQueryAndWriteToExcel(@RequestBody QueryRequest queryRequest) {
+        databaseQueryService.executeQueryAndWriteToExcel(
+                queryRequest.getQuery(),
+                queryRequest.getOutputFilePath(),
+                queryRequest.getExtractionColumns(),
+                queryRequest.getSeparatorRegex()
+        );
+        return "Query executed and results written to Excel.";
+    }
+}
+```
+
+### 6. `QueryRequest.java`
+
+This class represents the request body for the query execution.
+
+```java
+package com.example.dbqueryexecutor.controller;
+
+import java.util.List;
+
+public class QueryRequest {
+    private String query;
+    private String outputFilePath;
+    private List<String> extractionColumns;
+    private String separatorRegex;
+
+    // Getters and setters
+
+    public String getQuery() {
+        return query;
+    }
+
+    public void setQuery(String query) {
+        this.query = query;
+    }
+
+    public String getOutputFilePath() {
+        return outputFilePath;
+    }
+
+    public void setOutputFilePath(String outputFilePath) {
+        this.outputFilePath = outputFilePath;
+    }
+
+    public List<String> getExtractionColumns() {
+        return extractionColumns;
+    }
+
+    public void setExtractionColumns(List<String> extractionColumns) {
+        this.extractionColumns = extractionColumns;
+    }
+
+    public String getSeparatorRegex() {
+        return separatorRegex;
+    }
+
+    public void setSeparatorRegex(String separatorRegex) {
+        this.separatorRegex = separatorRegex;
+    }
+}
+```
+
+### 7. `application.properties`
+
+Configure the database connection settings in this file.
+
+```properties
+# Database connection settings
+spring.datasource.url=jdbc:mysql://localhost:3306/your_database_name
+spring.datasource.username=your_database_username
+spring.datasource.password=your_database_password
+spring.datasource.driver-class-name=com.mysql.cj.jdbc.Driver
+
+# JPA settings
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.MySQL8Dialect
+```
+
+### 8. `pom.xml`
+
+Ensure you have the correct dependencies in your `pom.xml`.
+
+```xml
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://www.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>db-query-executor</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <parent>
+        <groupId>org.springframework.boot
