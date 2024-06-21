@@ -1,4 +1,4 @@
-To convert the given code to a pure Spring Boot application without using Spring Data JPA, we will create a structured project with the following components:
+noTo convert the given code to a pure Spring Boot application without using Spring Data JPA, we will create a structured project with the following components:
 
 1. **`src/main/java/com/example/dbqueryexecutor/DatabaseQueryExecutorApplication.java`**: The main class to run the Spring Boot application.
 2. **`src/main/java/com/example/dbqueryexecutor/controller/QueryController.java`**: REST controller to handle HTTP requests.
@@ -544,3 +544,250 @@ pom.xml
 </project>
 
 DOWNLOADCLOSE
+
+
+
+To modify the Spring Boot application to get input data through JSON and to accept a regex separator for splitting the key-value pairs, follow these steps:
+
+1. **Update `QueryRequest.java`** to include the regex separator.
+2. **Update `QueryController.java`** to accept the JSON request body directly.
+3. **Update `DatabaseQueryService.java`** to use the regex separator from the request.
+
+### Updated `QueryRequest.java`
+Include a field for the regex separator in the request model.
+
+```java
+package com.example.dbqueryexecutor.model;
+
+import java.util.List;
+
+public class QueryRequest {
+    private String query;
+    private String outputFilePath;
+    private List<String> extractionColumns;
+    private String separatorRegex;
+
+    // Getters and Setters
+
+    public String getQuery() {
+        return query;
+    }
+
+    public void setQuery(String query) {
+        this.query = query;
+    }
+
+    public String getOutputFilePath() {
+        return outputFilePath;
+    }
+
+    public void setOutputFilePath(String outputFilePath) {
+        this.outputFilePath = outputFilePath;
+    }
+
+    public List<String> getExtractionColumns() {
+        return extractionColumns;
+    }
+
+    public void setExtractionColumns(List<String> extractionColumns) {
+        this.extractionColumns = extractionColumns;
+    }
+
+    public String getSeparatorRegex() {
+        return separatorRegex;
+    }
+
+    public void setSeparatorRegex(String separatorRegex) {
+        this.separatorRegex = separatorRegex;
+    }
+}
+```
+
+### Updated `QueryController.java`
+Modify the controller to accept the JSON request body directly.
+
+```java
+package com.example.dbqueryexecutor.controller;
+
+import com.example.dbqueryexecutor.model.QueryRequest;
+import com.example.dbqueryexecutor.service.DatabaseQueryService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/query")
+public class QueryController {
+
+    @Autowired
+    private DatabaseQueryService queryService;
+
+    @PostMapping("/execute")
+    public ResponseEntity<String> executeQuery(@RequestBody QueryRequest queryRequest) {
+        try {
+            queryService.executeQueryAndWriteToExcel(
+                    queryRequest.getQuery(),
+                    queryRequest.getOutputFilePath(),
+                    queryRequest.getExtractionColumns(),
+                    queryRequest.getSeparatorRegex()
+            );
+            return ResponseEntity.ok("Query executed and results written to " + queryRequest.getOutputFilePath());
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to execute query: " + e.getMessage());
+        }
+    }
+}
+```
+
+### Updated `DatabaseQueryService.java`
+Update the service to use the regex separator from the request.
+
+```java
+package com.example.dbqueryexecutor.service;
+
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.sql.*;
+import java.util.*;
+
+@Service
+public class DatabaseQueryService {
+
+    @Value("${spring.datasource.url}")
+    private String jdbcUrl;
+
+    @Value("${spring.datasource.username}")
+    private String jdbcUser;
+
+    @Value("${spring.datasource.password}")
+    private String jdbcPassword;
+
+    public void executeQueryAndWriteToExcel(String query, String outputFilePath, List<String> extractionColumns, String separatorRegex) {
+        try (Connection connection = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword);
+             Statement statement = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+             ResultSet resultSet = statement.executeQuery(query);
+             Workbook workbook = new XSSFWorkbook()) {
+
+            Sheet sheet = workbook.createSheet("Query Results");
+
+            ResultSetMetaData metaData = resultSet.getMetaData();
+            int columnCount = metaData.getColumnCount();
+
+            List<String> allColumns = new ArrayList<>();
+            for (int i = 1; i <= columnCount; i++) {
+                allColumns.add(metaData.getColumnName(i));
+            }
+
+            Map<String, Set<String>> columnKeysMap = new HashMap<>();
+            for (String column : extractionColumns) {
+                columnKeysMap.put(column, new HashSet<>());
+            }
+
+            while (resultSet.next()) {
+                for (String column : extractionColumns) {
+                    int columnIndex = resultSet.findColumn(column);
+                    extractKeys(resultSet.getString(columnIndex), columnKeysMap.get(column), separatorRegex);
+                }
+            }
+
+            resultSet.beforeFirst();
+
+            Row headerRow = sheet.createRow(0);
+            int headerIndex = 0;
+            Map<String, Integer> headerIndexes = new HashMap<>();
+
+            for (String column : allColumns) {
+                headerRow.createCell(headerIndex++).setCellValue(column);
+            }
+
+            for (String column : extractionColumns) {
+                for (String key : columnKeysMap.get(column)) {
+                    headerIndexes.put(column + ":" + key, headerIndex);
+                    headerRow.createCell(headerIndex++).setCellValue(key);
+                }
+            }
+
+            int rowIndex = 1;
+            while (resultSet.next()) {
+                Row row = sheet.createRow(rowIndex++);
+                int cellIndex = 0;
+
+                for (String column : allColumns) {
+                    row.createCell(cellIndex++).setCellValue(resultSet.getString(column));
+                }
+
+                for (String column : extractionColumns) {
+                    int columnIndex = resultSet.findColumn(column);
+                    Map<String, String> keyValuePairs = parseKeyValuePairs(resultSet.getString(columnIndex), separatorRegex);
+                    for (Map.Entry<String, String> entry : keyValuePairs.entrySet()) {
+                        int index = headerIndexes.get(column + ":" + entry.getKey());
+                        row.createCell(index).setCellValue(entry.getValue());
+                    }
+                }
+            }
+
+            try (FileOutputStream fileOut = new FileOutputStream(outputFilePath)) {
+                workbook.write(fileOut);
+            }
+
+        } catch (SQLException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void extractKeys(String text, Set<String> keys, String separatorRegex) {
+        if (text != null && !text.isEmpty()) {
+            String[] pairs = text.split(separatorRegex);
+            for (int i = 0; i < pairs.length - 1; i += 2) {
+                keys.add(pairs[i].trim());
+            }
+        }
+    }
+
+    private Map<String, String> parseKeyValuePairs(String text, String separatorRegex) {
+        Map<String, String> map = new HashMap<>();
+        if (text != null && !text.isEmpty()) {
+            String[] pairs = text.split(separatorRegex);
+            for (int i = 0; i < pairs.length - 1; i += 2) {
+                map.put(pairs[i].trim(), pairs[i + 1].trim());
+            }
+        }
+        return map;
+    }
+}
+```
+
+### Sending the Request Through Postman
+
+1. **Set Request Type and URL**:
+   - Set the request type to `POST`.
+   - Enter the URL: `http://localhost:8080/api/query/execute`.
+
+2. **Set Up the Body**:
+   - Go to the `Body` tab.
+   - Select `raw`.
+   - Select `JSON` from the dropdown menu.
+   - Enter the JSON body.
+
+#### Example JSON Body:
+```json
+{
+    "query": "SELECT * FROM your_table",
+    "outputFilePath": "output.xlsx",
+    "extractionColumns": ["column1", "column2"],
+    "separatorRegex": "-"
+}
+```
+
+3. **Send the Request**:
+   - Click `Send`.
+   - Check the response section to see the server's response.
+
+This setup modifies the Spring Boot application to accept input data through JSON and to allow specifying a regex separator for splitting key-value pairs.
