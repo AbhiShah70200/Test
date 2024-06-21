@@ -1299,3 +1299,25 @@ Ensure you have the correct dependencies in your `pom.xml`.
 
     <parent>
         <groupId>org.springframework.boot
+
+
+
+
+src
+└── main
+    ├── java
+    │   └── com
+    │       └── example
+    │           └── dbqueryexecutor
+    │               ├── Application.java
+    │               ├── controller
+    │               │   ├── DatabaseQueryController.java
+    │               │   └── QueryRequest.java
+    │               ├── model
+    │               │   └── YourEntity.java
+    │               ├── repository
+    │               │   └── YourEntityRepository.java
+    │               └── service
+    │                   └── DatabaseQueryService.java
+    └── resources
+        ├── application.properties
