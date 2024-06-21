@@ -791,3 +791,173 @@ public class DatabaseQueryService {
    - Check the response section to see the server's response.
 
 This setup modifies the Spring Boot application to accept input data through JSON and to allow specifying a regex separator for splitting key-value pairs.
+
+
+To ensure the extracted fields are in order in the output, you need to maintain the order of the keys while processing the data. Here’s how you can modify your `DatabaseQueryService.java` to achieve this:
+
+1. Use a `LinkedHashMap` instead of a `HashMap` to maintain the insertion order of keys.
+2. Modify the code to process and maintain the order of columns and extracted keys.
+
+Here is the modified `DatabaseQueryService.java`:
+
+```java
+package com.example.dbqueryexecutor.service;
+
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.sql.*;
+import java.util.*;
+
+@Service
+public class DatabaseQueryService {
+
+    @Value("${spring.datasource.url}")
+    private String jdbcUrl;
+
+    @Value("${spring.datasource.username}")
+    private String jdbcUser;
+
+    @Value("${spring.datasource.password}")
+    private String jdbcPassword;
+
+    public void executeQueryAndWriteToExcel(String query, String outputFilePath, List<String> extractionColumns, String separatorRegex) {
+        try (Connection connection = DriverManager.getConnection(jdbcUrl, jdbcUser, jdbcPassword);
+             Statement statement = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+             ResultSet resultSet = statement.executeQuery(query);
+             Workbook workbook = new XSSFWorkbook()) {
+
+            Sheet sheet = workbook.createSheet("Query Results");
+
+            ResultSetMetaData metaData = resultSet.getMetaData();
+            int columnCount = metaData.getColumnCount();
+
+            List<String> allColumns = new ArrayList<>();
+            for (int i = 1; i <= columnCount; i++) {
+                allColumns.add(metaData.getColumnName(i));
+            }
+
+            // Use LinkedHashMap to maintain the order of keys
+            Map<String, LinkedHashSet<String>> columnKeysMap = new LinkedHashMap<>();
+            for (String column : extractionColumns) {
+                columnKeysMap.put(column, new LinkedHashSet<>());
+            }
+
+            while (resultSet.next()) {
+                for (String column : extractionColumns) {
+                    int columnIndex = resultSet.findColumn(column);
+                    extractKeys(resultSet.getString(columnIndex), columnKeysMap.get(column), separatorRegex);
+                }
+            }
+
+            resultSet.beforeFirst();
+
+            Row headerRow = sheet.createRow(0);
+            int headerIndex = 0;
+            Map<String, Integer> headerIndexes = new LinkedHashMap<>();
+
+            for (String column : allColumns) {
+                headerRow.createCell(headerIndex++).setCellValue(column);
+            }
+
+            for (String column : extractionColumns) {
+                for (String key : columnKeysMap.get(column)) {
+                    headerIndexes.put(column + ":" + key, headerIndex);
+                    headerRow.createCell(headerIndex++).setCellValue(key);
+                }
+            }
+
+            int rowIndex = 1;
+            while (resultSet.next()) {
+                Row row = sheet.createRow(rowIndex++);
+                int cellIndex = 0;
+
+                for (String column : allColumns) {
+                    row.createCell(cellIndex++).setCellValue(resultSet.getString(column));
+                }
+
+                for (String column : extractionColumns) {
+                    int columnIndex = resultSet.findColumn(column);
+                    Map<String, String> keyValuePairs = parseKeyValuePairs(resultSet.getString(columnIndex), separatorRegex);
+                    for (Map.Entry<String, String> entry : keyValuePairs.entrySet()) {
+                        int index = headerIndexes.get(column + ":" + entry.getKey());
+                        row.createCell(index).setCellValue(entry.getValue());
+                    }
+                }
+            }
+
+            try (FileOutputStream fileOut = new FileOutputStream(outputFilePath)) {
+                workbook.write(fileOut);
+            }
+
+        } catch (SQLException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void extractKeys(String text, Set<String> keys, String separatorRegex) {
+        if (text != null && !text.isEmpty()) {
+            String[] pairs = text.split(separatorRegex);
+            for (int i = 0; i < pairs.length - 1; i += 2) {
+                keys.add(pairs[i].trim());
+            }
+        }
+    }
+
+    private Map<String, String> parseKeyValuePairs(String text, String separatorRegex) {
+        Map<String, String> map = new LinkedHashMap<>();
+        if (text != null && !text.isEmpty()) {
+            String[] pairs = text.split(separatorRegex);
+            for (int i = 0; i < pairs.length - 1; i += 2) {
+                map.put(pairs[i].trim(), pairs[i + 1].trim());
+            }
+        }
+        return map;
+    }
+}
+```
+
+### Explanation:
+
+1. **Maintain Key Order**:
+   - Use `LinkedHashMap` and `LinkedHashSet` instead of `HashMap` and `HashSet` to maintain the insertion order of keys.
+
+2. **Update Extract Keys Method**:
+   - `extractKeys`: This method now accepts a `Set<String>` which can be a `LinkedHashSet` to maintain order.
+
+3. **Update Parse Key-Value Pairs Method**:
+   - `parseKeyValuePairs`: This method now uses a `LinkedHashMap` to maintain the order of key-value pairs.
+
+### Sending the Request Through Postman
+
+1. **Set Request Type and URL**:
+   - Set the request type to `POST`.
+   - Enter the URL: `http://localhost:8080/api/query/execute`.
+
+2. **Set Up the Body**:
+   - Go to the `Body` tab.
+   - Select `raw`.
+   - Select `JSON` from the dropdown menu.
+   - Enter the JSON body.
+
+#### Example JSON Body:
+```json
+{
+    "query": "SELECT * FROM your_table",
+    "outputFilePath": "output.xlsx",
+    "extractionColumns": ["column1", "column2"],
+    "separatorRegex": "-"
+}
+```
+
+3. **Send the Request**:
+   - Click `Send`.
+   - Check the response section to see the server's response.
+
+This modification ensures the fields are extracted and ordered correctly in the output file.
