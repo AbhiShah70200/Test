@@ -2273,3 +2273,176 @@ db-query-executor/
     ```
 
 By following these steps, you should be able to run the project and test its functionality. If you encounter any issues, make sure to check the logs for errors and ensure all configurations are correctly set.
+
+
+To ensure the extracted fields are in the correct order, you need to maintain the order of columns and keys as specified in your input. Here's a modified version of the code to ensure the extracted fields maintain their specified order.
+
+### Code Changes to Ensure Order of Extracted Fields
+
+#### `DatabaseQueryService.java`
+
+Make the following adjustments to ensure extracted keys are in the specified order.
+
+```java
+package com.example.dbqueryexecutor.service;
+
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.sql.*;
+import java.util.*;
+
+@Service
+public class DatabaseQueryService {
+
+    @Value("${spring.datasource.url}")
+    private String jdbcUrl;
+
+    @Value("${spring.datasource.username}")
+    private String jdbcUsername;
+
+    @Value("${spring.datasource.password}")
+    private String jdbcPassword;
+
+    private DriverManagerDataSource dataSource;
+
+    @PostConstruct
+    public void initialize() {
+        dataSource = new DriverManagerDataSource();
+        dataSource.setUrl(jdbcUrl);
+        dataSource.setUsername(jdbcUsername);
+        dataSource.setPassword(jdbcPassword);
+    }
+
+    public void executeQueryAndWriteToExcel(String query, String outputFilePath, List<String> extractionColumns, String separatorRegex) {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+             ResultSet resultSet = statement.executeQuery(query);
+             Workbook workbook = new XSSFWorkbook()) {
+
+            Sheet sheet = workbook.createSheet("Query Results");
+
+            ResultSetMetaData metaData = resultSet.getMetaData();
+            int columnCount = metaData.getColumnCount();
+
+            List<String> allColumns = new ArrayList<>();
+            for (int i = 1; i <= columnCount; i++) {
+                allColumns.add(metaData.getColumnName(i));
+            }
+
+            // Using LinkedHashMap to preserve the order of keys
+            Map<String, LinkedHashSet<String>> columnKeysMap = new LinkedHashMap<>();
+            for (String column : extractionColumns) {
+                columnKeysMap.put(column, new LinkedHashSet<>());
+            }
+
+            while (resultSet.next()) {
+                for (String column : extractionColumns) {
+                    int columnIndex = resultSet.findColumn(column);
+                    extractKeys(resultSet.getString(columnIndex), columnKeysMap.get(column), separatorRegex);
+                }
+            }
+
+            resultSet.beforeFirst();
+
+            Row headerRow = sheet.createRow(0);
+            int headerIndex = 0;
+            Map<String, Integer> headerIndexes = new LinkedHashMap<>();
+
+            for (String column : allColumns) {
+                headerRow.createCell(headerIndex++).setCellValue(column);
+            }
+
+            for (String column : extractionColumns) {
+                for (String key : columnKeysMap.get(column)) {
+                    headerIndexes.put(column + ":" + key, headerIndex);
+                    headerRow.createCell(headerIndex++).setCellValue(key);
+                }
+            }
+
+            int rowIndex = 1;
+            while (resultSet.next()) {
+                Row row = sheet.createRow(rowIndex++);
+                int cellIndex = 0;
+
+                for (String column : allColumns) {
+                    row.createCell(cellIndex++).setCellValue(resultSet.getString(column));
+                }
+
+                for (String column : extractionColumns) {
+                    int columnIndex = resultSet.findColumn(column);
+                    Map<String, String> keyValuePairs = parseKeyValuePairs(resultSet.getString(columnIndex), separatorRegex);
+                    for (Map.Entry<String, String> entry : keyValuePairs.entrySet()) {
+                        int index = headerIndexes.get(column + ":" + entry.getKey());
+                        row.createCell(index).setCellValue(entry.getValue());
+                    }
+                }
+            }
+
+            try (FileOutputStream fileOut = new FileOutputStream(outputFilePath)) {
+                workbook.write(fileOut);
+            }
+
+        } catch (SQLException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void extractKeys(String text, Set<String> keys, String separatorRegex) {
+        if (text != null && !text.isEmpty()) {
+            String[] pairs = text.split(separatorRegex);
+            for (int i = 0; i < pairs.length - 1; i += 2) {
+                keys.add(pairs[i].trim());
+            }
+        }
+    }
+
+    private Map<String, String> parseKeyValuePairs(String text, String separatorRegex) {
+        Map<String, String> map = new LinkedHashMap<>();
+        if (text != null && !text.isEmpty()) {
+            String[] pairs = text.split(separatorRegex);
+            for (int i = 0; i < pairs.length - 1; i += 2) {
+                map.put(pairs[i].trim(), pairs[i + 1].trim());
+            }
+        }
+        return map;
+    }
+}
+```
+
+### Explanation
+
+1. **Using `LinkedHashSet` and `LinkedHashMap`**:
+   - `LinkedHashSet` is used to maintain the order of keys as they are added.
+   - `LinkedHashMap` is used to maintain the insertion order of the headers.
+
+2. **Modifying `extractKeys` and `parseKeyValuePairs`**:
+   - The methods are updated to use `LinkedHashMap` to ensure the order of keys is preserved.
+
+3. **Header Index Mapping**:
+   - The header indexes are stored in a `LinkedHashMap` to ensure the correct order of headers.
+
+### Steps to Trigger the API Using Postman
+
+1. **Open Postman**.
+2. **Create a new POST request** with URL `http://localhost:8080/query/execute`.
+3. **Set up the request body** with the following JSON:
+
+    ```json
+    {
+        "query": "SELECT * FROM your_table",
+        "outputFilePath": "output.xlsx",
+        "extractionColumns": ["acc", "id", "as", "time"],
+        "separatorRegex": "-"
+    }
+    ```
+
+4. **Send the request** and verify the response. The response should indicate the query execution and Excel file creation.
