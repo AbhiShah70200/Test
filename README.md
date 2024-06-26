@@ -1736,3 +1736,540 @@ Here is a summary of the files included in the project:
 8. **QueryRequest.java**
 
 This completes the full code for the Spring Boot application configured to use a Sybase database. Let me know if you need further assistance or modifications.
+
+
+Sure, I'll simplify the code by removing the AWS Secrets Manager integration and the JPA components, since writing to the database is not required. The new version will focus only on reading from the database and writing the results to an Excel file.
+
+### Project Structure
+
+```
+db-query-executor/
+│
+├── src/main/java/com/example/dbqueryexecutor/
+│   ├── Application.java
+│   ├── controller/
+│   │   ├── DatabaseQueryController.java
+│   │   └── QueryRequest.java
+│   └── service/
+│       └── DatabaseQueryService.java
+│
+├── src/main/resources/
+│   ├── application.properties
+│
+├── pom.xml
+│
+└── README.md
+```
+
+### `pom.xml`
+
+Include the necessary dependencies:
+
+```xml
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://www.w3.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>db-query-executor</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.7.0</version>
+        <relativePath/>
+    </parent>
+
+    <properties>
+        <java.version>11</java.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.sybase.jdbc4</groupId>
+            <artifactId>jconn4</artifactId>
+            <version>7.0</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.2.3</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+```
+
+### `application.properties`
+
+Update the database connection settings for Sybase:
+
+```properties
+# Database connection settings
+spring.datasource.url=jdbc:sybase:Tds:localhost:5000/your_database_name
+spring.datasource.username=your_database_username
+spring.datasource.password=your_database_password
+spring.datasource.driver-class-name=com.sybase.jdbc4.jdbc.SybDriver
+```
+
+### `Application.java`
+
+```java
+package com.example.dbqueryexecutor;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class Application {
+    public static void main(String[] args) {
+        SpringApplication.run(Application.class, args);
+    }
+}
+```
+
+### `QueryRequest.java`
+
+```java
+package com.example.dbqueryexecutor.controller;
+
+import java.util.List;
+
+public class QueryRequest {
+    private String query;
+    private String outputFilePath;
+    private List<String> extractionColumns;
+    private String separatorRegex;
+
+    // Getters and setters
+    public String getQuery() {
+        return query;
+    }
+
+    public void setQuery(String query) {
+        this.query = query;
+    }
+
+    public String getOutputFilePath() {
+        return outputFilePath;
+    }
+
+    public void setOutputFilePath(String outputFilePath) {
+        this.outputFilePath = outputFilePath;
+    }
+
+    public List<String> getExtractionColumns() {
+        return extractionColumns;
+    }
+
+    public void setExtractionColumns(List<String> extractionColumns) {
+        this.extractionColumns = extractionColumns;
+    }
+
+    public String getSeparatorRegex() {
+        return separatorRegex;
+    }
+
+    public void setSeparatorRegex(String separatorRegex) {
+        this.separatorRegex = separatorRegex;
+    }
+}
+```
+
+### `DatabaseQueryController.java`
+
+```java
+package com.example.dbqueryexecutor.controller;
+
+import com.example.dbqueryexecutor.service.DatabaseQueryService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/query")
+public class DatabaseQueryController {
+
+    @Autowired
+    private DatabaseQueryService databaseQueryService;
+
+    @PostMapping("/execute")
+    public ResponseEntity<String> executeQuery(@RequestBody QueryRequest request) {
+        databaseQueryService.executeQueryAndWriteToExcel(
+                request.getQuery(),
+                request.getOutputFilePath(),
+                request.getExtractionColumns(),
+                request.getSeparatorRegex()
+        );
+        return ResponseEntity.ok("Query executed and results written to " + request.getOutputFilePath());
+    }
+}
+```
+
+### `DatabaseQueryService.java`
+
+```java
+package com.example.dbqueryexecutor.service;
+
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.sql.*;
+import java.util.*;
+
+@Service
+public class DatabaseQueryService {
+
+    @Value("${spring.datasource.url}")
+    private String jdbcUrl;
+
+    @Value("${spring.datasource.username}")
+    private String jdbcUsername;
+
+    @Value("${spring.datasource.password}")
+    private String jdbcPassword;
+
+    private DriverManagerDataSource dataSource;
+
+    @PostConstruct
+    public void initialize() {
+        dataSource = new DriverManagerDataSource();
+        dataSource.setUrl(jdbcUrl);
+        dataSource.setUsername(jdbcUsername);
+        dataSource.setPassword(jdbcPassword);
+    }
+
+    public void executeQueryAndWriteToExcel(String query, String outputFilePath, List<String> extractionColumns, String separatorRegex) {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+             ResultSet resultSet = statement.executeQuery(query);
+             Workbook workbook = new XSSFWorkbook()) {
+
+            Sheet sheet = workbook.createSheet("Query Results");
+
+            ResultSetMetaData metaData = resultSet.getMetaData();
+            int columnCount = metaData.getColumnCount();
+
+            List<String> allColumns = new ArrayList<>();
+            for (int i = 1; i <= columnCount; i++) {
+                allColumns.add(metaData.getColumnName(i));
+            }
+
+            Map<String, Set<String>> columnKeysMap = new HashMap<>();
+            for (String column : extractionColumns) {
+                columnKeysMap.put(column, new HashSet<>());
+            }
+
+            while (resultSet.next()) {
+                for (String column : extractionColumns) {
+                    int columnIndex = resultSet.findColumn(column);
+                    extractKeys(resultSet.getString(columnIndex), columnKeysMap.get(column), separatorRegex);
+                }
+            }
+
+            resultSet.beforeFirst();
+
+            Row headerRow = sheet.createRow(0);
+            int headerIndex = 0;
+            Map<String, Integer> headerIndexes = new HashMap<>();
+
+            for (String column : allColumns) {
+                headerRow.createCell(headerIndex++).setCellValue(column);
+            }
+
+            for (String column : extractionColumns) {
+                for (String key : columnKeysMap.get(column)) {
+                    headerIndexes.put(column + ":" + key, headerIndex);
+                    headerRow.createCell(headerIndex++).setCellValue(key);
+                }
+            }
+
+            int rowIndex = 1;
+            while (resultSet.next()) {
+                Row row = sheet.createRow(rowIndex++);
+                int cellIndex = 0;
+
+                for (String column : allColumns) {
+                    row.createCell(cellIndex++).setCellValue(resultSet.getString(column));
+                }
+
+                for (String column : extractionColumns) {
+                    int columnIndex = resultSet.findColumn(column);
+                    Map<String, String> keyValuePairs = parseKeyValuePairs(resultSet.getString(columnIndex), separatorRegex);
+                    for (Map.Entry<String, String> entry : keyValuePairs.entrySet()) {
+                        int index = headerIndexes.get(column + ":" + entry.getKey());
+                        row.createCell(index).setCellValue(entry.getValue());
+                    }
+                }
+            }
+
+            try (FileOutputStream fileOut = new FileOutputStream(outputFilePath)) {
+                workbook
+
+
+I apologize for the abrupt end. Let's continue from where we left off.
+
+### `DatabaseQueryService.java` (continued)
+
+Complete the `DatabaseQueryService` class by adding the remaining part of the `parseKeyValuePairs` method and ensuring all necessary imports are included:
+
+```java
+package com.example.dbqueryexecutor.service;
+
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.stereotype.Service;
+
+import javax.annotation.PostConstruct;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.sql.*;
+import java.util.*;
+
+@Service
+public class DatabaseQueryService {
+
+    @Value("${spring.datasource.url}")
+    private String jdbcUrl;
+
+    @Value("${spring.datasource.username}")
+    private String jdbcUsername;
+
+    @Value("${spring.datasource.password}")
+    private String jdbcPassword;
+
+    private DriverManagerDataSource dataSource;
+
+    @PostConstruct
+    public void initialize() {
+        dataSource = new DriverManagerDataSource();
+        dataSource.setUrl(jdbcUrl);
+        dataSource.setUsername(jdbcUsername);
+        dataSource.setPassword(jdbcPassword);
+    }
+
+    public void executeQueryAndWriteToExcel(String query, String outputFilePath, List<String> extractionColumns, String separatorRegex) {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+             ResultSet resultSet = statement.executeQuery(query);
+             Workbook workbook = new XSSFWorkbook()) {
+
+            Sheet sheet = workbook.createSheet("Query Results");
+
+            ResultSetMetaData metaData = resultSet.getMetaData();
+            int columnCount = metaData.getColumnCount();
+
+            List<String> allColumns = new ArrayList<>();
+            for (int i = 1; i <= columnCount; i++) {
+                allColumns.add(metaData.getColumnName(i));
+            }
+
+            Map<String, Set<String>> columnKeysMap = new HashMap<>();
+            for (String column : extractionColumns) {
+                columnKeysMap.put(column, new HashSet<>());
+            }
+
+            while (resultSet.next()) {
+                for (String column : extractionColumns) {
+                    int columnIndex = resultSet.findColumn(column);
+                    extractKeys(resultSet.getString(columnIndex), columnKeysMap.get(column), separatorRegex);
+                }
+            }
+
+            resultSet.beforeFirst();
+
+            Row headerRow = sheet.createRow(0);
+            int headerIndex = 0;
+            Map<String, Integer> headerIndexes = new HashMap<>();
+
+            for (String column : allColumns) {
+                headerRow.createCell(headerIndex++).setCellValue(column);
+            }
+
+            for (String column : extractionColumns) {
+                for (String key : columnKeysMap.get(column)) {
+                    headerIndexes.put(column + ":" + key, headerIndex);
+                    headerRow.createCell(headerIndex++).setCellValue(key);
+                }
+            }
+
+            int rowIndex = 1;
+            while (resultSet.next()) {
+                Row row = sheet.createRow(rowIndex++);
+                int cellIndex = 0;
+
+                for (String column : allColumns) {
+                    row.createCell(cellIndex++).setCellValue(resultSet.getString(column));
+                }
+
+                for (String column : extractionColumns) {
+                    int columnIndex = resultSet.findColumn(column);
+                    Map<String, String> keyValuePairs = parseKeyValuePairs(resultSet.getString(columnIndex), separatorRegex);
+                    for (Map.Entry<String, String> entry : keyValuePairs.entrySet()) {
+                        int index = headerIndexes.get(column + ":" + entry.getKey());
+                        row.createCell(index).setCellValue(entry.getValue());
+                    }
+                }
+            }
+
+            try (FileOutputStream fileOut = new FileOutputStream(outputFilePath)) {
+                workbook.write(fileOut);
+            }
+
+        } catch (SQLException | IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void extractKeys(String text, Set<String> keys, String separatorRegex) {
+        if (text != null && !text.isEmpty()) {
+            String[] pairs = text.split(separatorRegex);
+            for (int i = 0; i < pairs.length - 1; i += 2) {
+                keys.add(pairs[i].trim());
+            }
+        }
+    }
+
+    private Map<String, String> parseKeyValuePairs(String text, String separatorRegex) {
+        Map<String, String> map = new HashMap<>();
+        if (text != null && !text.isEmpty()) {
+            String[] pairs = text.split(separatorRegex);
+            for (int i = 0; i < pairs.length - 1; i += 2) {
+                map.put(pairs[i].trim(), pairs[i + 1].trim());
+            }
+        }
+        return map;
+    }
+}
+```
+
+### Project Structure Recap
+
+Ensure your project structure looks like this:
+
+```
+db-query-executor/
+│
+├── src/main/java/com/example/dbqueryexecutor/
+│   ├── Application.java
+│   ├── controller/
+│   │   ├── DatabaseQueryController.java
+│   │   └── QueryRequest.java
+│   └── service/
+│       └── DatabaseQueryService.java
+│
+├── src/main/resources/
+│   └── application.properties
+│
+├── pom.xml
+│
+└── README.md
+```
+
+### Running the Project
+
+1. **Clone or Create the Project Directory**: Create a new directory for the project and navigate into it.
+
+    ```sh
+    mkdir db-query-executor
+    cd db-query-executor
+    ```
+
+2. **Create the Maven Project**: Use the following command to create a new Maven project.
+
+    ```sh
+    mvn archetype:generate -DgroupId=com.example -DartifactId=db-query-executor -DarchetypeArtifactId=maven-archetype-quickstart -DinteractiveMode=false
+    cd db-query-executor
+    ```
+
+3. **Update the `pom.xml`**: Replace the content of the `pom.xml` with the provided content.
+
+4. **Create the Project Structure**: Create the necessary directories and files according to the provided project structure.
+
+    ```sh
+    mkdir -p src/main/java/com/example/dbqueryexecutor/{controller,service}
+    mkdir -p src/main/resources
+    touch src/main/resources/application.properties
+    touch src/main/java/com/example/dbqueryexecutor/Application.java
+    touch src/main/java/com/example/dbqueryexecutor/controller/{DatabaseQueryController.java,QueryRequest.java}
+    touch src/main/java/com/example/dbqueryexecutor/service/DatabaseQueryService.java
+    ```
+
+5. **Add the Provided Code**: Copy and paste the provided code into the respective files.
+
+6. **Configure `application.properties`**: Update the `application.properties` file with your Sybase database connection details.
+
+7. **Add Sybase JDBC Driver**: Ensure the Sybase JDBC driver (`jconn4.jar`) is available in your local Maven repository or add it manually.
+
+    ```sh
+    mvn install:install-file -Dfile=path/to/jconn4.jar -DgroupId=com.sybase.jdbc4 -DartifactId=jconn4 -Dversion=7.0 -Dpackaging=jar
+    ```
+
+8. **Build the Project**: Use Maven to build the project.
+
+    ```sh
+    mvn clean install
+    ```
+
+9. **Run the Application**: Use Maven to run the Spring Boot application.
+
+    ```sh
+    mvn spring-boot:run
+    ```
+
+### Testing the API
+
+1. **Postman**: To test the API endpoints, you can use Postman to send HTTP requests. For example, to test the `executeQuery` endpoint:
+
+    - Set the request type to `POST`.
+    - Set the URL to `http://localhost:8080/query/execute`.
+    - Set the request body to `raw` and choose `JSON` as the format.
+    - Provide a JSON body similar to:
+
+    ```json
+    {
+        "query": "SELECT * FROM your_table",
+        "outputFilePath": "/path/to/output.xlsx",
+        "extractionColumns": ["column1", "column2"],
+        "separatorRegex": "-"
+    }
+    ```
+
+By following these steps, you should be able to run the project and test its functionality. If you encounter any issues, make sure to check the logs for errors and ensure all configurations are correctly set.
