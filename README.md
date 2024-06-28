@@ -3677,3 +3677,64 @@ db-query-executor/
 │   │   │               │   └── DatabaseQueryController.java
 │   │   │               ├── model/
 │   │   │              
+
+
+Sure, here is the complete project structure for the Spring Boot application:
+
+```
+db-query-executor/
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/
+│   │   │       └── example/
+│   │   │           └── dbqueryexecutor/
+│   │   │               ├── config/
+│   │   │               │   └── DataSourceConfig.java
+│   │   │               ├── controller/
+│   │   │               │   └── DatabaseQueryController.java
+│   │   │               ├── model/
+│   │   │               │   └── QueryRequest.java
+│   │   │               ├── service/
+│   │   │               │   └── DatabaseQueryService.java
+│   │   │               └── DbQueryExecutorApplication.java
+│   │   ├── resources/
+│   │   │   ├── application.properties
+│   │   │   └── logback-spring.xml (optional for logging configuration)
+│   └── test/
+│       └── java/
+│           └── com/
+│               └── example/
+│                   └── dbqueryexecutor/
+│                       ├── DatabaseQueryServiceTest.java
+│                       └── DatabaseQueryControllerTest.java
+└── pom.xml
+```
+
+### Explanation of the Project Structure
+
+1. **src/main/java/com/example/dbqueryexecutor/config/**:
+   - `DataSourceConfig.java`: Contains the configuration for the DataSource.
+
+2. **src/main/java/com/example/dbqueryexecutor/controller/**:
+   - `DatabaseQueryController.java`: REST controller that handles the query execution request.
+
+3. **src/main/java/com/example/dbqueryexecutor/model/**:
+   - `QueryRequest.java`: Model class representing the JSON request payload.
+
+4. **src/main/java/com/example/dbqueryexecutor/service/**:
+   - `DatabaseQueryService.java`: Service class that handles the business logic of executing the query and writing the results to an Excel file.
+
+5. **src/main/java/com/example/dbqueryexecutor/**:
+   - `DbQueryExecutorApplication.java`: The main Spring Boot application class.
+
+6. **src/main/resources/**:
+   - `application.properties`: Configuration file for the Spring Boot application.
+   - `logback-spring.xml` (optional): Configuration for logging.
+
+7. **src/test/java/com/example/dbqueryexecutor/**:
+   - `DatabaseQueryServiceTest.java`: Unit tests for the `DatabaseQueryService` class.
+   - `DatabaseQueryControllerTest.java`: Unit tests for the `DatabaseQueryController` class.
+
+8. **pom.xml**:
+   - Maven
