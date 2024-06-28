@@ -3370,3 +3370,310 @@ spring.datasource.driver-class-name=com.sybase.jdbc4.jdbc.SybDriver
 4. **Send the request** and verify the response. The response should indicate the query execution and Excel file creation.
 
 By following this approach, you dynamically pass database credentials and other query parameters via Postman, ensuring they are used directly within the service without relying on static properties.
+
+To pass the datasource URL, username, and password dynamically through JSON and still manage the datasource configuration in `application.properties`, you can use Spring Boot's support for dynamic properties. However, Spring Boot does not natively support changing `application.properties` at runtime directly from JSON requests.
+
+Instead, you can create a custom configuration and manage the datasource manually. Here’s how you can achieve it:
+
+### Step-by-Step Guide
+
+1. **Modify the `application.properties`** to include basic configurations without database specifics:
+   ```properties
+   spring.main.allow-bean-definition-overriding=true
+   spring.datasource.driver-class-name=com.sybase.jdbc4.jdbc.SybDriver
+   ```
+
+2. **Create a custom configuration for the DataSource**:
+
+   ```java
+   package com.example.dbqueryexecutor.config;
+
+   import org.springframework.context.annotation.Bean;
+   import org.springframework.context.annotation.Configuration;
+   import org.springframework.jdbc.datasource.DriverManagerDataSource;
+
+   import javax.sql.DataSource;
+
+   @Configuration
+   public class DataSourceConfig {
+
+       @Bean
+       public DataSource dataSource(String url, String username, String password) {
+           DriverManagerDataSource dataSource = new DriverManagerDataSource();
+           dataSource.setDriverClassName("com.sybase.jdbc4.jdbc.SybDriver");
+           dataSource.setUrl(url);
+           dataSource.setUsername(username);
+           dataSource.setPassword(password);
+           return dataSource;
+       }
+   }
+   ```
+
+3. **Update the `DatabaseQueryService`** to use the custom DataSource:
+
+   ```java
+   package com.example.dbqueryexecutor.service;
+
+   import org.apache.poi.ss.usermodel.Row;
+   import org.apache.poi.ss.usermodel.Sheet;
+   import org.apache.poi.ss.usermodel.Workbook;
+   import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+   import org.springframework.beans.factory.annotation.Autowired;
+   import org.springframework.jdbc.datasource.DriverManagerDataSource;
+   import org.springframework.stereotype.Service;
+
+   import javax.sql.DataSource;
+   import java.io.FileOutputStream;
+   import java.io.IOException;
+   import java.sql.*;
+   import java.util.*;
+
+   @Service
+   public class DatabaseQueryService {
+
+       @Autowired
+       private DataSourceConfig dataSourceConfig;
+
+       public void executeQueryAndWriteToExcel(
+               String jdbcUrl, String jdbcUsername, String jdbcPassword,
+               String query, String outputFilePath, List<String> extractionColumns, String separatorRegex) {
+
+           DataSource dataSource = dataSourceConfig.dataSource(jdbcUrl, jdbcUsername, jdbcPassword);
+
+           try (Connection connection = dataSource.getConnection();
+                Statement statement = connection.createStatement(ResultSet.TYPE_SCROLL_INSENSITIVE, ResultSet.CONCUR_READ_ONLY);
+                ResultSet resultSet = statement.executeQuery(query);
+                Workbook workbook = new XSSFWorkbook()) {
+
+               Class.forName("com.sybase.jdbc4.jdbc.SybDriver");
+               Sheet sheet = workbook.createSheet("Query Results");
+
+               ResultSetMetaData metaData = resultSet.getMetaData();
+               int columnCount = metaData.getColumnCount();
+
+               List<String> allColumns = new ArrayList<>();
+               for (int i = 1; i <= columnCount; i++) {
+                   allColumns.add(metaData.getColumnName(i));
+               }
+
+               Map<String, LinkedHashSet<String>> columnKeysMap = new LinkedHashMap<>();
+               for (String column : extractionColumns) {
+                   columnKeysMap.put(column, new LinkedHashSet<>());
+               }
+
+               while (resultSet.next()) {
+                   for (String column : extractionColumns) {
+                       int columnIndex = resultSet.findColumn(column);
+                       extractKeys(resultSet.getString(columnIndex), columnKeysMap.get(column), separatorRegex);
+                   }
+               }
+
+               resultSet.beforeFirst();
+
+               Row headerRow = sheet.createRow(0);
+               int headerIndex = 0;
+               Map<String, Integer> headerIndexes = new LinkedHashMap<>();
+
+               for (String column : allColumns) {
+                   headerRow.createCell(headerIndex++).setCellValue(column);
+               }
+
+               for (String column : extractionColumns) {
+                   for (String key : columnKeysMap.get(column)) {
+                       headerIndexes.put(column + ":" + key, headerIndex);
+                       headerRow.createCell(headerIndex++).setCellValue(key);
+                   }
+               }
+
+               int rowIndex = 1;
+               while (resultSet.next()) {
+                   Row row = sheet.createRow(rowIndex++);
+                   int cellIndex = 0;
+
+                   for (String column : allColumns) {
+                       row.createCell(cellIndex++).setCellValue(resultSet.getString(column));
+                   }
+
+                   for (String column : extractionColumns) {
+                       int columnIndex = resultSet.findColumn(column);
+                       Map<String, String> keyValuePairs = parseKeyValuePairs(resultSet.getString(columnIndex), separatorRegex);
+                       for (Map.Entry<String, String> entry : keyValuePairs.entrySet()) {
+                           int index = headerIndexes.get(column + ":" + entry.getKey());
+                           row.createCell(index).setCellValue(entry.getValue());
+                       }
+                   }
+               }
+
+               try (FileOutputStream fileOut = new FileOutputStream(outputFilePath)) {
+                   workbook.write(fileOut);
+               }
+
+           } catch (ClassNotFoundException e) {
+               System.out.println("Sybase JDBC Driver not found.");
+               e.printStackTrace();
+           } catch (SQLException | IOException e) {
+               e.printStackTrace();
+           }
+       }
+
+       private void extractKeys(String text, Set<String> keys, String separatorRegex) {
+           if (text != null && !text.isEmpty()) {
+               String[] pairs = text.split(separatorRegex);
+               for (int i = 0; i < pairs.length - 1; i += 2) {
+                   keys.add(pairs[i].trim());
+               }
+           }
+       }
+
+       private Map<String, String> parseKeyValuePairs(String text, String separatorRegex) {
+           Map<String, String> map = new LinkedHashMap<>();
+           if (text != null && !text.isEmpty()) {
+               String[] pairs = text.split(separatorRegex);
+               for (int i = 0; i < pairs.length - 1; i += 2) {
+                   map.put(pairs[i].trim(), pairs[i + 1].trim());
+               }
+           }
+           return map;
+       }
+   }
+   ```
+
+4. **Modify `QueryRequest` to include database connection details**:
+   ```java
+   package com.example.dbqueryexecutor.model;
+
+   import com.fasterxml.jackson.annotation.JsonProperty;
+
+   import java.util.List;
+
+   public class QueryRequest {
+
+       @JsonProperty("jdbcUrl")
+       private String jdbcUrl;
+
+       @JsonProperty("jdbcUsername")
+       private String jdbcUsername;
+
+       @JsonProperty("jdbcPassword")
+       private String jdbcPassword;
+
+       @JsonProperty("query")
+       private String query;
+
+       @JsonProperty("outputFilePath")
+       private String outputFilePath;
+
+       @JsonProperty("extractionColumns")
+       private List<String> extractionColumns;
+
+       @JsonProperty("separatorRegex")
+       private String separatorRegex;
+
+       // Getters and setters
+       public String getJdbcUrl() {
+           return jdbcUrl;
+       }
+
+       public void setJdbcUrl(String jdbcUrl) {
+           this.jdbcUrl = jdbcUrl;
+       }
+
+       public String getJdbcUsername() {
+           return jdbcUsername;
+       }
+
+       public void setJdbcUsername(String jdbcUsername) {
+           this.jdbcUsername = jdbcUsername;
+       }
+
+       public String getJdbcPassword() {
+           return jdbcPassword;
+       }
+
+       public void setJdbcPassword(String jdbcPassword) {
+           this.jdbcPassword = jdbcPassword;
+       }
+
+       public String getQuery() {
+           return query;
+       }
+
+       public void setQuery(String query) {
+           this.query = query;
+       }
+
+       public String getOutputFilePath() {
+           return outputFilePath;
+       }
+
+       public void setOutputFilePath(String outputFilePath) {
+           this.outputFilePath = outputFilePath;
+       }
+
+       public List<String> getExtractionColumns() {
+           return extractionColumns;
+       }
+
+       public void setExtractionColumns(List<String> extractionColumns) {
+           this.extractionColumns = extractionColumns;
+       }
+
+       public String getSeparatorRegex() {
+           return separatorRegex;
+       }
+
+       public void setSeparatorRegex(String separatorRegex) {
+           this.separatorRegex = separatorRegex;
+       }
+   }
+   ```
+
+5. **Update `DatabaseQueryController` to handle the new `QueryRequest`**:
+   ```java
+   package com.example.dbqueryexecutor.controller;
+
+   import com.example.dbqueryexecutor.model.QueryRequest;
+   import com.example.dbqueryexecutor.service.DatabaseQueryService;
+   import org.springframework.beans.factory.annotation.Autowired;
+   import org.springframework.web.bind.annotation.*;
+
+   @RestController
+   @RequestMapping("/query")
+   public class DatabaseQueryController {
+
+       @Autowired
+       private DatabaseQueryService queryService;
+
+       @PostMapping("/execute")
+       public void executeQuery(@RequestBody QueryRequest queryRequest) {
+           queryService.executeQueryAndWriteToExcel(
+                   queryRequest.getJdbcUrl(),
+                   queryRequest.getJdbcUsername(),
+                   queryRequest.getJdbcPassword(),
+                   queryRequest.getQuery(),
+                   queryRequest.getOutputFilePath(),
+                   queryRequest.getExtractionColumns(),
+                   queryRequest.getSeparatorRegex()
+           );
+       }
+   }
+   ```
+
+### Project Structure
+
+The project structure should look like this:
+
+```
+db-query-executor/
+├── src/
+│   ├── main/
+│   │   ├── java/
+│   │   │   └── com/
+│   │   │       └── example/
+│   │   │           └── dbqueryexecutor/
+│   │   │               ├── config/
+│   │   │               │   └── DataSourceConfig.java
+│   │   │               ├── controller/
+│   │   │               │   └── DatabaseQueryController.java
+│   │   │               ├── model/
+│   │   │              
