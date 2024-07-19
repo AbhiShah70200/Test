@@ -4397,3 +4397,120 @@ public class DatabaseQueryController {
                 queryRequest.getOutputFilePath(),
                 queryRequest.getExtractionColumns(),
                 queryRequest.getSeparator
+
+
+
+### Description
+
+Found object deserialization using `ObjectInputStream`. Deserializing entire Java objects is dangerous because malicious actors can create Java object streams with unintended consequences.
+
+### Fix Recommendation
+
+Ensure that the objects being deserialized are not user-controlled. If this must be done, consider the following security measures:
+
+1. **Use HMACs to Sign the Data Stream**:
+   - Implement integrity checks such as HMACs (Hash-based Message Authentication Codes) to ensure the data stream has not been tampered with.
+
+2. **Transmit Only Object Fields**:
+   - Instead of deserializing entire objects, transmit only necessary object fields and populate a new object with these fields.
+
+### Example: Secure Deserialization with HMAC Verification
+
+Below is an example demonstrating how to use HMACs to sign and verify the integrity of the serialized data stream before deserializing the object.
+
+#### Example Language: Java
+
+1. **HMAC Utility Class**:
+
+```java
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
+
+public class HmacUtil {
+    private static final String HMAC_ALGO = "HmacSHA256";
+    private static final byte[] SECRET_KEY = "your-secret-key".getBytes();
+
+    public static byte[] calculateHMAC(byte[] data) throws NoSuchAlgorithmException, InvalidKeyException {
+        Mac mac = Mac.getInstance(HMAC_ALGO);
+        SecretKeySpec secretKeySpec = new SecretKeySpec(SECRET_KEY, HMAC_ALGO);
+        mac.init(secretKeySpec);
+        return mac.doFinal(data);
+    }
+
+    public static boolean verifyHMAC(byte[] data, byte[] hmac) throws NoSuchAlgorithmException, InvalidKeyException {
+        byte[] calculatedHmac = calculateHMAC(data);
+        return Arrays.equals(calculatedHmac, hmac);
+    }
+}
+```
+
+2. **ObjectCloner Class with HMAC Verification**:
+
+```java
+import java.io.*;
+
+public class ObjectCloner {
+
+    // Private constructor to prevent instantiation
+    private ObjectCloner() { }
+
+    // Returns a deep copy of an object with HMAC verification
+    public static Object deepCopy(Object oldObj) throws Exception {
+        ObjectOutputStream oos = null;
+        ObjectInputStream ois = null;
+
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            oos = new ObjectOutputStream(bos);
+
+            // Serialize and pass the object
+            oos.writeObject(oldObj);
+            oos.flush();
+
+            // Calculate HMAC for the serialized data
+            byte[] serializedData = bos.toByteArray();
+            byte[] hmac = HmacUtil.calculateHMAC(serializedData);
+
+            // Combine serialized data and HMAC
+            ByteArrayOutputStream combinedBos = new ByteArrayOutputStream();
+            combinedBos.write(serializedData);
+            combinedBos.write(hmac);
+            byte[] combinedData = combinedBos.toByteArray();
+
+            // Deserialize the object with HMAC verification
+            ByteArrayInputStream bin = new ByteArrayInputStream(combinedData, 0, combinedData.length - hmac.length);
+            byte[] receivedHmac = Arrays.copyOfRange(combinedData, combinedData.length - hmac.length, combinedData.length);
+
+            if (!HmacUtil.verifyHMAC(bin.readAllBytes(), receivedHmac)) {
+                throw new SecurityException("Data integrity check failed. The data may have been tampered with.");
+            }
+
+            bin = new ByteArrayInputStream(combinedData, 0, combinedData.length - hmac.length);
+            ois = new ObjectInputStream(bin);
+
+            // Return the new object
+            return ois.readObject();
+        } catch (Exception e) {
+            System.out.println("Exception in ObjectCloner: " + e);
+            throw e;
+        } finally {
+            if (oos != null) {
+                oos.close();
+            }
+            if (ois != null) {
+                ois.close();
+            }
+        }
+    }
+}
+```
+
+### Summary
+
+- **Integrity Checks**: Use HMACs to sign and verify serialized data to ensure it hasn't been tampered with.
+- **Deserialization Security**: Verify the integrity of the data before deserializing to protect against malicious object streams.
+- **Transmit Only Fields**: When possible, transmit only the necessary fields and populate new objects instead of deserializing entire objects.
+- 
