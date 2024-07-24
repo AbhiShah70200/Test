@@ -4623,3 +4623,145 @@ public class SecretKeyFromEnv {
 4. **Secure Storage**: Store the secret key securely using environment variables, configuration files, or secrets management services.
 
 Ensure that your secret key management practices comply with your organization's security policies and industry best practices.
+
+Certainly! Let's modify the code to write the serialized data with HMAC to a text file and read it back from the file for deserialization.
+
+### Serialization with HMAC Generation and Writing to File
+
+1. **SerializationUtil**: Modify to write the serialized data with HMAC to a file.
+
+```java
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.*;
+import java.security.Key;
+
+public class SerializationUtil {
+
+    private static final String HMAC_ALGO = "HmacSHA256";
+    private static final String SECRET_KEY = "secret_key"; // Use a strong key in real applications
+
+    public static void serializeWithHMAC(Object obj, String filePath) throws Exception {
+        ByteArrayOutputStream byteOutStream = new ByteArrayOutputStream();
+        BufferedOutputStream bufferedOutStream = new BufferedOutputStream(byteOutStream);
+        ObjectOutputStream objectOutStream = new ObjectOutputStream(bufferedOutStream);
+
+        objectOutStream.writeObject(obj);
+        objectOutStream.flush();
+        bufferedOutStream.flush();
+
+        byte[] serializedData = byteOutStream.toByteArray();
+        byte[] hmac = generateHMAC(serializedData);
+
+        ByteArrayOutputStream combinedStream = new ByteArrayOutputStream();
+        BufferedOutputStream combinedBufferedOutStream = new BufferedOutputStream(combinedStream);
+
+        combinedBufferedOutStream.write(serializedData);
+        combinedBufferedOutStream.write(hmac);
+        combinedBufferedOutStream.flush();
+
+        byte[] finalData = combinedStream.toByteArray();
+
+        try (FileOutputStream fileOutStream = new FileOutputStream(filePath);
+             BufferedOutputStream fileBufferedOutStream = new BufferedOutputStream(fileOutStream)) {
+            fileBufferedOutStream.write(finalData);
+            fileBufferedOutStream.flush();
+        }
+    }
+
+    private static byte[] generateHMAC(byte[] data) throws Exception {
+        Key hmacKey = new SecretKeySpec(SECRET_KEY.getBytes(), HMAC_ALGO);
+        Mac mac = Mac.getInstance(HMAC_ALGO);
+        mac.init(hmacKey);
+        return mac.doFinal(data);
+    }
+}
+```
+
+### Deserialization with HMAC Verification and Reading from File
+
+2. **DeserializationUtil**: Modify to read the serialized data with HMAC from a file.
+
+```java
+import java.io.*;
+import java.util.Arrays;
+
+public class DeserializationUtil {
+
+    public static Object deserializeWithHMAC(String filePath) throws Exception {
+        byte[] data;
+
+        try (FileInputStream fileInStream = new FileInputStream(filePath);
+             BufferedInputStream fileBufferedInStream = new BufferedInputStream(fileInStream)) {
+            data = fileBufferedInStream.readAllBytes();
+        }
+
+        int hmacLength = 32; // Length of HMAC-SHA256
+        byte[] serializedData = Arrays.copyOfRange(data, 0, data.length - hmacLength);
+        byte[] receivedHMAC = Arrays.copyOfRange(data, data.length - hmacLength, data.length);
+
+        byte[] computedHMAC = SerializationUtil.generateHMAC(serializedData);
+
+        if (!Arrays.equals(receivedHMAC, computedHMAC)) {
+            throw new SecurityException("Data integrity check failed.");
+        }
+
+        ByteArrayInputStream byteInStream = new ByteArrayInputStream(serializedData);
+        BufferedInputStream bufferedInStream = new BufferedInputStream(byteInStream);
+        ObjectInputStream objectInStream = new ObjectInputStream(bufferedInStream);
+
+        return objectInStream.readObject();
+    }
+}
+```
+
+### Main Class to Test Serialization and Deserialization
+
+3. **Main Class**: Modify to test writing to and reading from a text file.
+
+```java
+public class Main {
+    public static void main(String[] args) {
+        String filePath = "serialized_data.txt";
+
+        try {
+            MyClass obj = new MyClass("Hello, World!");
+            SerializationUtil.serializeWithHMAC(obj, filePath);
+
+            MyClass deserializedObj = (MyClass) DeserializationUtil.deserializeWithHMAC(filePath);
+            System.out.println(deserializedObj.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+}
+```
+
+4. **Definition of `MyClass`**:
+
+```java
+import java.io.Serializable;
+
+public class MyClass implements Serializable {
+    private static final long serialVersionUID = 1L;
+    private String message;
+
+    public MyClass(String message) {
+        this.message = message;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+}
+```
+
+### Notes
+
+- **File Paths**: Ensure the file path used in `filePath` is correct and accessible for writing and reading.
+- **Buffer Size**: Buffered streams are used to enhance performance, especially for larger data sizes.
+- **Security**: Proper key management and security practices should be implemented in a production environment.
