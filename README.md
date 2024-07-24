@@ -4765,3 +4765,178 @@ public class MyClass implements Serializable {
 - **File Paths**: Ensure the file path used in `filePath` is correct and accessible for writing and reading.
 - **Buffer Size**: Buffered streams are used to enhance performance, especially for larger data sizes.
 - **Security**: Proper key management and security practices should be implemented in a production environment.
+
+To modify the code so that it can insert data into the given columns of an Excel sheet through a REST client, we need to:
+
+1. Create an endpoint to accept data through a REST client.
+2. Write the data into the specified columns of the Excel sheet.
+3. Validate the data as specified.
+
+Here's how you can achieve this:
+
+### Dependencies
+Ensure the following dependencies are included in your `pom.xml`:
+```xml
+<dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.apache.poi</groupId>
+        <artifactId>poi</artifactId>
+        <version>5.2.3</version>
+    </dependency>
+    <dependency>
+        <groupId>org.apache.poi</groupId>
+        <artifactId>poi-ooxml</artifactId>
+        <version>5.2.3</version>
+    </dependency>
+</dependencies>
+```
+
+### Main Application
+Create the main application class:
+```java
+package com.example.excelprocessor;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication
+public class ExcelProcessorApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(ExcelProcessorApplication.class, args);
+    }
+}
+```
+
+### DTO Class
+Create a DTO class to hold the data coming from the REST client:
+```java
+package com.example.excelprocessor.dto;
+
+public class DataDTO {
+    private String column1;
+    private String column2;
+    private String effectiveDate;
+
+    // Getters and Setters
+    public String getColumn1() {
+        return column1;
+    }
+
+    public void setColumn1(String column1) {
+        this.column1 = column1;
+    }
+
+    public String getColumn2() {
+        return column2;
+    }
+
+    public void setColumn2(String column2) {
+        this.column2 = column2;
+    }
+
+    public String getEffectiveDate() {
+        return effectiveDate;
+    }
+
+    public void setEffectiveDate(String effectiveDate) {
+        this.effectiveDate = effectiveDate;
+    }
+}
+```
+
+### Service Class
+Create a service class to handle the Excel file processing:
+```java
+package com.example.excelprocessor.service;
+
+import com.example.excelprocessor.dto.DataDTO;
+import org.apache.poi.ss.usermodel.*;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.springframework.stereotype.Service;
+
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+
+@Service
+public class ExcelProcessorService {
+
+    public void insertDataToExcel(String filePath, DataDTO data) throws IOException {
+        FileInputStream excelFile = new FileInputStream(filePath);
+        Workbook workbook = new XSSFWorkbook(excelFile);
+        Sheet sheet = workbook.getSheetAt(0);
+
+        Row newRow = sheet.createRow(sheet.getLastRowNum() + 1);
+
+        insertCellData(newRow, 0, data.getColumn1());
+        insertCellData(newRow, 1, data.getColumn2());
+        insertCellData(newRow, 2, data.getEffectiveDate());
+
+        FileOutputStream outputStream = new FileOutputStream(filePath);
+        workbook.write(outputStream);
+        workbook.close();
+        outputStream.close();
+    }
+
+    private void insertCellData(Row row, int cellIndex, String value) {
+        if (value == null || value.trim().isEmpty() || value.contains("'")) {
+            throw new IllegalArgumentException("Invalid cell value: " + value);
+        }
+        Cell cell = row.createCell(cellIndex);
+        cell.setCellValue(value);
+    }
+}
+```
+
+### Controller Class
+Create a controller class to expose the endpoint:
+```java
+package com.example.excelprocessor.controller;
+
+import com.example.excelprocessor.dto.DataDTO;
+import com.example.excelprocessor.service.ExcelProcessorService;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
+
+@RestController
+@RequestMapping("/excel")
+public class ExcelProcessorController {
+
+    @Autowired
+    private ExcelProcessorService excelProcessorService;
+
+    @PostMapping("/insertData")
+    public String insertDataToExcel(@RequestParam String filePath, @RequestBody DataDTO data) {
+        try {
+            excelProcessorService.insertDataToExcel(filePath, data);
+            return "Data inserted successfully.";
+        } catch (IOException e) {
+            return "Error processing Excel file: " + e.getMessage();
+        } catch (IllegalArgumentException e) {
+            return "Validation error: " + e.getMessage();
+        }
+    }
+}
+```
+
+### Running the Application
+Run the application and use a REST client to insert data into the Excel sheet:
+```
+POST http://localhost:8080/excel/insertData?filePath=/path/to/your/excel/file.xlsx
+Content-Type: application/json
+
+{
+    "column1": "value1",
+    "column2": "value2",
+    "effectiveDate": "2024-01-01"
+}
+```
+
+This setup provides an endpoint to insert data into an Excel sheet, validates the data to ensure no single quotes or empty cells, and ensures the "Effective Date" is a text value. Ensure the column indices and validation logic match your actual Excel file structure and requirements.
