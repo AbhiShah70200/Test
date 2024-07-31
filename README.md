@@ -5092,3 +5092,117 @@ class LookAheadObjectInputStream extends ObjectInputStream {
         return super.resolveClass(desc);
     }
 }
+
+
+To secure deserialization in Java, you should implement measures to prevent unauthorized or malicious data from being deserialized. Here are some strategies, examples, and best practices to follow:
+
+### Avoid Accepting Serialized Objects from Untrusted Sources
+The safest approach is not to accept serialized objects from untrusted sources. This eliminates the risk of deserialization attacks entirely.
+
+### Integrity Checks
+Implement integrity checks such as digital signatures to ensure the data has not been tampered with.
+
+### Enforce Type Constraints
+Override the `ObjectInputStream` class to enforce strict type constraints.
+
+### Example: Rejecting Deserialization
+Preventing deserialization by overriding the `readObject` method:
+
+```java
+import java.io.IOException;
+import java.io.ObjectInputStream;
+
+public class SecureClass implements Serializable {
+    // Other class details
+
+    private final void readObject(ObjectInputStream in) throws IOException {
+        throw new IOException("Deserialization is not allowed");
+    }
+}
+```
+
+### Example: Restricting Allowed Types
+Using a custom `ObjectInputStream` to restrict deserialization to specific classes:
+
+```java
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InvalidClassException;
+import java.io.ObjectInputStream;
+import java.io.ObjectStreamClass;
+
+public class LookAheadObjectInputStream extends ObjectInputStream {
+    public LookAheadObjectInputStream(InputStream inputStream) throws IOException {
+        super(inputStream);
+    }
+
+    @Override
+    protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+        if (!desc.getName().equals("com.example.Bicycle")) {
+            throw new InvalidClassException("Unauthorized deserialization attempt", desc.getName());
+        }
+        return super.resolveClass(desc);
+    }
+}
+```
+
+### Additional Recommendations
+- **Isolate Deserialization**: Run deserialization code in a low-privilege environment.
+- **Log Deserialization Activities**: Log and monitor deserialization activities and exceptions.
+- **Network Restrictions**: Restrict or monitor network connectivity for systems that perform deserialization.
+- **Exception Handling**: Ensure proper handling and logging of deserialization exceptions.
+
+### Applying These Principles
+When implementing deep copying or any serialization/deserialization logic, incorporate these best practices. Here’s an example of using the `LookAheadObjectInputStream` in your `ObjectCloner` class:
+
+```java
+import java.io.*;
+
+public class ObjectCloner {
+
+    private ObjectCloner() { }
+
+    public static Object deepCopy(Object oldObj) throws Exception {
+        ObjectOutputStream oos = null;
+        LookAheadObjectInputStream ois = null;
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            oos = new ObjectOutputStream(bos);
+            oos.writeObject(oldObj);
+            oos.flush();
+
+            ByteArrayInputStream bin = new ByteArrayInputStream(bos.toByteArray());
+            ois = new LookAheadObjectInputStream(bin);
+            return ois.readObject();
+        } catch (Exception e) {
+            System.out.println("Exception in ObjectCloner = " + e);
+            throw e;
+        } finally {
+            if (oos != null) {
+                oos.close();
+            }
+            if (ois != null) {
+                ois.close();
+            }
+        }
+    }
+}
+
+class LookAheadObjectInputStream extends ObjectInputStream {
+    public LookAheadObjectInputStream(InputStream inputStream) throws IOException {
+        super(inputStream);
+    }
+
+    @Override
+    protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+        // Replace with your expected class name
+        if (!desc.getName().equals("com.example.Bicycle")) {
+            throw new InvalidClassException("Unauthorized deserialization attempt", desc.getName());
+        }
+        return super.resolveClass(desc);
+    }
+}
+```
+
+### Conclusion
+Securing deserialization in Java involves rejecting unauthorized deserialization attempts, enforcing type constraints, and isolating deserialization processes. By following these recommendations, you can mitigate the risks associated with deserialization vulnerabilities.
