@@ -4940,3 +4940,107 @@ Content-Type: application/json
 ```
 
 This setup provides an endpoint to insert data into an Excel sheet, validates the data to ensure no single quotes or empty cells, and ensures the "Effective Date" is a text value. Ensure the column indices and validation logic match your actual Excel file structure and requirements.
+
+
+The provided code attempts to create a deep copy of an object using serialization and deserialization. However, it has several issues, including syntax errors, improper exception handling, and lack of security considerations for deserialization. Here is a corrected and improved version of the code:
+
+```java
+import java.io.*;
+
+public class ObjectCloner {
+
+    // Private constructor to prevent instantiation
+    private ObjectCloner() { }
+
+    // Returns a deep copy of an object
+    public static Object deepCopy(Object oldObj) throws Exception {
+        ObjectOutputStream oos = null;
+        ObjectInputStream ois = null;
+        
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            oos = new ObjectOutputStream(bos);
+            
+            // Serialize and pass the object
+            oos.writeObject(oldObj);
+            oos.flush();
+
+            ByteArrayInputStream bin = new ByteArrayInputStream(bos.toByteArray());
+            ois = new ObjectInputStream(bin);
+
+            // Return the new object
+            return ois.readObject();
+        } catch (Exception e) {
+            System.out.println("Exception in ObjectCloner: " + e);
+            throw e;
+        } finally {
+            if (oos != null) {
+                oos.close();
+            }
+            if (ois != null) {
+                ois.close();
+            }
+        }
+    }
+}
+```
+
+### Key Improvements:
+
+1. **Syntax Corrections**: Fixed syntax errors such as missing semicolons and improper object creation.
+2. **Exception Handling**: Improved exception handling to ensure proper closing of streams.
+3. **Security Considerations**: This code still lacks security measures for deserialization. To enhance security, consider implementing class whitelisting during deserialization as shown in the earlier examples.
+
+### Secure Deserialization Example:
+
+To make the deserialization process secure, you can use a custom `ObjectInputStream` class to restrict which classes are allowed to be deserialized:
+
+```java
+public class SecureObjectInputStream extends ObjectInputStream {
+
+    public SecureObjectInputStream(InputStream in) throws IOException {
+        super(in);
+    }
+
+    @Override
+    protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+        if (!desc.getName().equals("your.package.YourClass")) {
+            throw new InvalidClassException("Unauthorized deserialization attempt", desc.getName());
+        }
+        return super.resolveClass(desc);
+    }
+}
+
+// Updated deepCopy method to use SecureObjectInputStream
+public static Object deepCopy(Object oldObj) throws Exception {
+    ObjectOutputStream oos = null;
+    ObjectInputStream ois = null;
+
+    try {
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        oos = new ObjectOutputStream(bos);
+
+        // Serialize and pass the object
+        oos.writeObject(oldObj);
+        oos.flush();
+
+        ByteArrayInputStream bin = new ByteArrayInputStream(bos.toByteArray());
+        ois = new SecureObjectInputStream(bin);
+
+        // Return the new object
+        return ois.readObject();
+    } catch (Exception e) {
+        System.out.println("Exception in ObjectCloner: " + e);
+        throw e;
+    } finally {
+        if (oos != null) {
+            oos.close();
+        }
+        if (ois != null) {
+            ois.close();
+        }
+    }
+}
+```
+
+This ensures that only specific classes are allowed to be deserialized, thereby mitigating the risk of deserialization attacks. Adjust the class name in the `resolveClass` method as per your application's requirements.
