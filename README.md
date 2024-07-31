@@ -5044,3 +5044,51 @@ public static Object deepCopy(Object oldObj) throws Exception {
 ```
 
 This ensures that only specific classes are allowed to be deserialized, thereby mitigating the risk of deserialization attacks. Adjust the class name in the `resolveClass` method as per your application's requirements.
+
+
+import java.io.*;
+
+public class ObjectCloner {
+
+    private ObjectCloner() { }
+
+    public static Object deepCopy(Object oldObj) throws Exception {
+        ObjectOutputStream oos = null;
+        LookAheadObjectInputStream ois = null;
+        try {
+            ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            oos = new ObjectOutputStream(bos);
+            oos.writeObject(oldObj);
+            oos.flush();
+
+            ByteArrayInputStream bin = new ByteArrayInputStream(bos.toByteArray());
+            ois = new LookAheadObjectInputStream(bin);
+            return ois.readObject();
+        } catch (Exception e) {
+            System.out.println("Exception in ObjectCloner = " + e);
+            throw e;
+        } finally {
+            if (oos != null) {
+                oos.close();
+            }
+            if (ois != null) {
+                ois.close();
+            }
+        }
+    }
+}
+
+class LookAheadObjectInputStream extends ObjectInputStream {
+    public LookAheadObjectInputStream(InputStream inputStream) throws IOException {
+        super(inputStream);
+    }
+
+    @Override
+    protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+        // Replace with your expected class name
+        if (!desc.getName().equals("com.example.Bicycle")) {
+            throw new InvalidClassException("Unauthorized deserialization attempt", desc.getName());
+        }
+        return super.resolveClass(desc);
+    }
+}
