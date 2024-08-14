@@ -5206,3 +5206,52 @@ class LookAheadObjectInputStream extends ObjectInputStream {
 
 ### Conclusion
 Securing deserialization in Java involves rejecting unauthorized deserialization attempts, enforcing type constraints, and isolating deserialization processes. By following these recommendations, you can mitigate the risks associated with deserialization vulnerabilities.
+
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.stream.Stream;
+
+public class FileSearch {
+
+    public static void main(String[] args) {
+        // Provide the directory path to search in
+        String directoryPath = "/path/to/your/project";
+        // The word to search for
+        String wordToFind = "yourSearchWord";
+
+        // Search the directory
+        searchFiles(new File(directoryPath), wordToFind);
+    }
+
+    private static void searchFiles(File directory, String wordToFind) {
+        // Get all files and directories in the current directory
+        File[] files = directory.listFiles();
+
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    // If the file is a directory, recursively search within it
+                    searchFiles(file, wordToFind);
+                } else if (file.isFile()) {
+                    // If the file is a regular file, check if it contains the word
+                    if (containsWord(file, wordToFind)) {
+                        System.out.println("Word found in file: " + file.getAbsolutePath());
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean containsWord(File file, String wordToFind) {
+        try (Stream<String> lines = Files.lines(Paths.get(file.getAbsolutePath()))) {
+            // Check if any line in the file contains the word
+            return lines.anyMatch(line -> line.contains(wordToFind));
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+}
