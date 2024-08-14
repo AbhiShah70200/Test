@@ -5255,3 +5255,74 @@ public class FileSearch {
         return false;
     }
 }
+
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.Scanner;
+import java.util.stream.Stream;
+
+public class FileSearch {
+
+    public static void main(String[] args) {
+        // Provide the directory path to search in
+        String directoryPath = "/path/to/your/project";
+
+        // Scanner for user input
+        Scanner scanner = new Scanner(System.in);
+        
+        while (true) {
+            // Prompt user for input
+            System.out.print("Enter the word to search for (or '1011' to exit): ");
+            String wordToFind = scanner.nextLine();
+
+            // Check if the user wants to exit
+            if ("1011".equals(wordToFind)) {
+                System.out.println("Exiting the program...");
+                break;
+            }
+
+            // Search the directory for the word
+            searchFiles(new File(directoryPath), wordToFind);
+        }
+
+        scanner.close();
+    }
+
+    private static void searchFiles(File directory, String wordToFind) {
+        // Get all files and directories in the current directory
+        File[] files = directory.listFiles();
+
+        if (files != null) {
+            for (File file : files) {
+                if (file.isDirectory()) {
+                    // If the file is a directory, recursively search within it
+                    searchFiles(file, wordToFind);
+                } else if (file.isFile()) {
+                    // If the file is a regular file, check if it contains the word
+                    if (containsWord(file, wordToFind)) {
+                        System.out.println("Word found in file: " + file.getAbsolutePath());
+                    }
+                }
+            }
+        }
+    }
+
+    private static boolean containsWord(File file, String wordToFind) {
+        Charset charset = StandardCharsets.UTF_8; // Or use StandardCharsets.ISO_8859_1 for a more lenient charset
+
+        try (Stream<String> lines = Files.lines(Paths.get(file.getAbsolutePath()), charset)) {
+            // Check if any line in the file contains the word
+            return lines.anyMatch(line -> line.contains(wordToFind));
+        } catch (IOException e) {
+            // Handle the error, possibly skipping the file that causes issues
+            System.err.println("Could not read file: " + file.getAbsolutePath() + " - " + e.getMessage());
+        }
+        return false;
+    }
+}
