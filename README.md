@@ -5326,3 +5326,4 @@ public class FileSearch {
         return false;
     }
 }
+=MID(A1,FIND("/",A1,FIND("/",A1)+1)+1,FIND("/",A1,FIND("/",A1,FIND("/",A1)+1)+1)-FIND("/",A1,FIND("/",A1)+1)-1)
