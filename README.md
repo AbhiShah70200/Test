@@ -5327,3 +5327,6 @@ public class FileSearch {
     }
 }
 =MID(A1,FIND("/",A1,FIND("/",A1)+1)+1,FIND("/",A1,FIND("/",A1,FIND("/",A1)+1)+1)-FIND("/",A1,FIND("/",A1)+1)-1)
+
+
+export CATALINA_OPTS="$CATALINA_OPTS -agentlib:jdwp=transport=dt_socket,address=8000,server=y,suspend=n"
