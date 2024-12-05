@@ -5330,3 +5330,65 @@ public class FileSearch {
 
 
 export CATALINA_OPTS="$CATALINA_OPTS -agentlib:jdwp=transport=dt_socket,address=8000,server=y,suspend=n"
+
+
+public void downLoad(ReportCalculationContext reportContext) throws Exception {
+    URL url = getUrl();
+    if (url == null) {
+        throw new Exception("URL cannot be null");
+    }
+    log.info("Started downloading from URL: " + url);
+
+    String downLoadToDir = getDownLoadToDir();
+    String host = reportContext.getParameter(Constants.PROXY_HOST).getValue().getStringValue();
+    int port = Integer.parseInt(reportContext.getParameter(Constants.PROXY_PORT).getValue().getStringValue());
+    log.info("Using proxy: " + host + ":" + port);
+
+    Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(host, port));
+    SSLContext sslContext = SSLContext.getInstance("TLS");
+    sslContext.init(null, new TrustManager[]{new X509TrustManager() {
+        @Override
+        public void checkClientTrusted(X509Certificate[] x509Certificates, String s) { }
+        @Override
+        public void checkServerTrusted(X509Certificate[] x509Certificates, String s) { }
+        @Override
+        public X509Certificate[] getAcceptedIssuers() {
+            return new X509Certificate[0];
+        }
+    }}, new SecureRandom());
+
+    HttpsURLConnection conn = (HttpsURLConnection) url.openConnection(proxy);
+    conn.setSSLSocketFactory(sslContext.getSocketFactory());
+    conn.setConnectTimeout(connectionTimeout);
+    conn.setReadTimeout(readTimeout);
+
+    // Add headers
+    conn.addRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36");
+    conn.addRequestProperty("Referer", "https://example.com");
+    conn.addRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+    conn.addRequestProperty("Accept-Language", "en-US,en;q=0.5");
+
+    // Check the response code
+    int responseCode = conn.getResponseCode();
+    if (responseCode == 403) {
+        log.error("Server returned 403 Forbidden for URL: " + url);
+        throw new IOException("Server returned 403 Forbidden for URL: " + url);
+    } else if (responseCode >= 400) {
+        log.error("Server returned error code: " + responseCode + " for URL: " + url);
+        throw new IOException("Server returned error code: " + responseCode);
+    }
+
+    // Download the file
+    try (InputStream in = conn.getInputStream();
+         OutputStream out = getFileOutputStream(downLoadToDir, new File(url.getPath()).getName())) {
+        byte[] buffer = new byte[8192];
+        int bytesRead;
+        while ((bytesRead = in.read(buffer)) != -1) {
+            out.write(buffer, 0, bytesRead);
+        }
+        log.info("Download Complete: " + downLoadToDir);
+    } catch (IOException e) {
+        log.error("Error during file download", e);
+        throw e;
+    }
+}
