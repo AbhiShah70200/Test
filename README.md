@@ -5391,4 +5391,56 @@ public void downLoad(ReportCalculationContext reportContext) throws Exception {
         log.error("Error during file download", e);
         throw e;
     }
+}import java.io.*;
+import java.net.*;
+
+public class DownloadPDFWithProxy {
+    public static void main(String[] args) {
+        // URL of the PDF file
+        String fileUrl = "https://example.com/sample.pdf";
+        // Path where the file should be saved
+        String saveFilePath = "C:/path/to/your/directory/sample.pdf";
+        // Proxy settings
+        String proxyHost = "your.proxy.server";
+        int proxyPort = 8080;
+
+        try {
+            // Configure proxy
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress(proxyHost, proxyPort));
+            
+            // Open a connection to the URL
+            URL url = new URL(fileUrl);
+            HttpURLConnection connection = (HttpURLConnection) url.openConnection(proxy);
+
+            // Check HTTP response code
+            int responseCode = connection.getResponseCode();
+            if (responseCode == HttpURLConnection.HTTP_OK) {
+                // Open input stream to read the file
+                InputStream inputStream = connection.getInputStream();
+                // Open output stream to save the file
+                FileOutputStream outputStream = new FileOutputStream(saveFilePath);
+
+                byte[] buffer = new byte[4096];
+                int bytesRead;
+
+                System.out.println("Downloading file...");
+                while ((bytesRead = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, bytesRead);
+                }
+
+                // Close streams
+                outputStream.close();
+                inputStream.close();
+
+                System.out.println("File downloaded successfully: " + saveFilePath);
+            } else {
+                System.out.println("HTTP request failed. Response code: " + responseCode);
+            }
+
+            // Disconnect the connection
+            connection.disconnect();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
