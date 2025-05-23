@@ -5469,3 +5469,51 @@ Passwords rotated successfully.
 No impact on services.
 
 Documentation updated.
+
+#!/bin/bash
+
+# connection.sh
+# Usage: ./connection.sh <DSN> <USER> <PASS> <SQL_FILE>
+
+DSN="$1"
+USER="$2"
+PASS="$3"
+SQL_FILE="$4"
+
+if [ $# -ne 4 ]; then
+    echo "Usage: $0 <DSN> <USER> <PASS> <SQL_FILE>"
+    exit 1
+fi
+
+# Execute SQL using isql
+isql "$DSN" "$USER" "$PASS" -b -d'\n' < "$SQL_FILE"
+,..........
+
+#!/bin/bash
+
+# proc.sh
+# Usage: ./proc.sh <DSN> <USER> <PASS> <NEW_USERNAME>
+
+DSN="$1"
+USER="$2"
+PASS="$3"
+NEW_USERNAME="$4"
+
+if [ $# -ne 4 ]; then
+    echo "Usage: $0 <DSN> <USER> <PASS> <NEW_USERNAME>"
+    exit 1
+fi
+
+# Create a temporary SQL file
+SQL_FILE=$(mktemp /tmp/run_procs_XXXX.sql)
+
+# Write the procedure call to the SQL file
+cat <<EOF > "$SQL_FILE"
+call sa.create_cobra_user('$NEW_USERNAME');
+EOF
+
+# Call the connection script
+./connection.sh "$DSN" "$USER" "$PASS" "$SQL_FILE"
+
+# Clean up
+rm -f "$SQL_FILE"
