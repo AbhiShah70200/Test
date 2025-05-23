@@ -1,11 +1,9 @@
 #!/bin/bash
 
 # connection.sh
-# Usage: ./connection.sh <SQL_FILE>
+# Just checks if connection is successful
 
-SQL_FILE="$1"
-
-# Hardcoded connection details
+# Hardcoded parameters
 HOST="myhost.mycompany.com"
 PORT="2638"
 USER="myuser"
@@ -13,18 +11,15 @@ PASS="mypassword"
 ENGINE="my_engine"
 DBNAME="my_database"
 
-if [ -z "$SQL_FILE" ]; then
-    echo "Usage: $0 <sql_script.sql>"
-    exit 1
-fi
-
-# Build the connection string
+# Connection string
 CONN_STR="HOST=$HOST;PORT=$PORT;UID=$USER;PWD=$PASS;ENG=$ENGINE;DBN=$DBNAME"
 
-# Execute the SQL script
-if isql -b -d'\n' -S "$CONN_STR" < "$SQL_FILE"; then
-    echo "Connection successful and SQL executed successfully."
+# Try connecting with a simple harmless SQL: SELECT 1
+echo "SELECT 1;" | isql -b -d'\n' -S "$CONN_STR" > /dev/null 2>&1
+
+if [ $? -eq 0 ]; then
+    echo "Connection successful."
 else
-    echo "Connection failed or SQL error." >&2
+    echo "Connection failed." >&2
     exit 1
 fi
