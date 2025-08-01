@@ -5552,3 +5552,16 @@ else
     echo "Connection failed or SQL error." >&2
     exit 1
 fi
+
+
+Subject: DSP Endpoint Update – Non-Prod Integration & Prod Timeline
+
+Hi [DSP Team / Name],
+
+We noticed that the DSP endpoint has been updated to a new one in Non-Prod. As we are currently integrating a new DSP user, we need to test the changes accordingly in Non-Prod.
+
+Could you please confirm if there are plans to update the same endpoint in Prod? If yes, kindly share the expected timeline so we can plan our changes accordingly.
+
+If there are no plans to update Prod yet, would it be possible to temporarily revert Non-Prod to the old endpoint? This will help ensure alignment between environments and avoid any potential issues during production rollout.
+
+Looking forward to your confirmation.
