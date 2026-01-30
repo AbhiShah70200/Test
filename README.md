@@ -119,3 +119,10 @@ public class DynamicApiBatchRunner {
         return null;
     }
 }
+Hello,
+
+Regarding the additional field that was added, could you please confirm whether it would be possible to apply an OR condition between fields X and Y on your side and expose the result as a separate exception or derived field in the response?
+
+Please let us know if this is feasible or if there are any constraints.
+
+Thank you.
