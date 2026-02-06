@@ -126,3 +126,9 @@ Regarding the additional field that was added, could you please confirm whether 
 Please let us know if this is feasible or if there are any constraints.
 
 Thank you.
+
+Just wanted to double-confirm the following points:
+The additional fields will be available in the production environment for XYZ by 9th Feb. Please let us know if this timeline still holds.
+The data contract is currently pending for data inputs from your end. We request that this be filled and completed by 9th Feb as well, so we can proceed as planned.
+Please let us know if anything is required from our side to meet these timelines.
+Thanks and regards,
